@@ -1,0 +1,44 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Redis monitoring
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+
+  # Trading system services
+  - job_name: 'trading-services'
+    static_configs:
+      - targets: 
+        - 'data-pipeline:8000'
+        - 'news-intelligence:8001'
+        - 'market-intelligence:8002'
+        - 'fundamental-analysis:8003'
+        - 'technical-analysis:8004'
+
+  # Signal monitoring pushgateway
+  - job_name: 'pushgateway'
+    static_configs:
+      - targets: ['prometheus-pushgateway:9091']
+    honor_labels: true
+
+  # Node exporter for system metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100'] 

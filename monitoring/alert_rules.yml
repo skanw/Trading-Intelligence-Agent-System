@@ -1,0 +1,126 @@
+groups:
+  - name: signal_monitoring
+    rules:
+      # Signal latency alerts
+      - alert: SignalLatencyHigh
+        expr: signal_age_minutes > 5
+        for: 2m
+        labels:
+          severity: warning
+          service: signal_monitor
+        annotations:
+          summary: "Signal latency is high"
+          description: "Latest signal is {{ $value }} minutes old, which exceeds the 5-minute threshold"
+
+      - alert: SignalLatencyCritical
+        expr: signal_age_minutes > 15
+        for: 1m
+        labels:
+          severity: critical
+          service: signal_monitor
+        annotations:
+          summary: "Signal latency is critically high"
+          description: "Latest signal is {{ $value }} minutes old, indicating potential system failure"
+
+      # No signals alert
+      - alert: NoSignalsReceived
+        expr: signal_age_minutes > 30
+        for: 1m
+        labels:
+          severity: critical
+          service: signal_monitor
+        annotations:
+          summary: "No signals received"
+          description: "No signals have been received for over 30 minutes"
+
+      # Monitoring errors
+      - alert: MonitoringErrors
+        expr: increase(monitoring_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: signal_monitor
+        annotations:
+          summary: "Monitoring errors detected"
+          description: "{{ $value }} monitoring errors in the last 5 minutes"
+
+      # High error rate
+      - alert: HighMonitoringErrorRate
+        expr: rate(monitoring_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          service: signal_monitor
+        annotations:
+          summary: "High monitoring error rate"
+          description: "Monitoring error rate is {{ $value | humanizePercentage }} per second"
+
+  - name: infrastructure
+    rules:
+      # Redis connectivity
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: redis
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance is not responding"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 80%: {{ $value | humanizePercentage }}"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80%: {{ $value }}%"
+
+      # Disk space
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is below 10%: {{ $value }}% remaining"
+
+  - name: trading_system
+    rules:
+      # Trading service health
+      - alert: TradingServiceDown
+        expr: up{job="trading-services"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: trading
+        annotations:
+          summary: "Trading service is down"
+          description: "Trading service {{ $labels.instance }} is not responding"
+
+      # Signal processing rate
+      - alert: LowSignalProcessingRate
+        expr: rate(signals_processed_total[5m]) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: signal_monitor
+        annotations:
+          summary: "Low signal processing rate"
+          description: "Signal processing rate is {{ $value | humanize }} signals per second" 

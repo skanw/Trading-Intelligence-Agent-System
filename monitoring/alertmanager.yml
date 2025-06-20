@@ -1,0 +1,158 @@
+global:
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'trading-alerts@yourcompany.com'
+  smtp_auth_username: 'trading-alerts@yourcompany.com'
+  smtp_auth_password: '${SMTP_PASSWORD}'
+
+route:
+  group_by: ['alertname', 'service']
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 12h
+  receiver: 'default'
+  routes:
+    # Critical alerts go to multiple channels
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      continue: true
+    
+    # Signal monitoring alerts
+    - match:
+        service: signal_monitor
+      receiver: 'signal-alerts'
+      continue: true
+    
+    # Trading system alerts
+    - match:
+        service: trading
+      receiver: 'trading-alerts'
+      continue: true
+    
+    # Infrastructure alerts
+    - match:
+        service: system
+      receiver: 'infrastructure-alerts'
+
+receivers:
+  - name: 'default'
+    email_configs:
+      - to: 'ops-team@yourcompany.com'
+        subject: 'Trading System Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          Alert: {{ .GroupLabels.alertname }}
+          Service: {{ .GroupLabels.service }}
+          
+          {{ range .Alerts }}
+          Description: {{ .Annotations.description }}
+          Status: {{ .Status }}
+          Started: {{ .StartsAt }}
+          {{ end }}
+
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'critical-alerts@yourcompany.com'
+        subject: 'CRITICAL: Trading System Alert'
+        body: |
+          🚨 CRITICAL ALERT 🚨
+          
+          Alert: {{ .GroupLabels.alertname }}
+          Service: {{ .GroupLabels.service }}
+          
+          {{ range .Alerts }}
+          Description: {{ .Annotations.description }}
+          Status: {{ .Status }}
+          Started: {{ .StartsAt }}
+          {{ end }}
+    
+    # Slack webhook for critical alerts
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#trading-alerts'
+        title: 'CRITICAL: {{ .GroupLabels.alertname }}'
+        text: |
+          🚨 Critical alert in trading system
+          Service: {{ .GroupLabels.service }}
+          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+        
+    # PagerDuty for critical alerts
+    pagerduty_configs:
+      - routing_key: '${PAGERDUTY_ROUTING_KEY}'
+        description: 'Critical alert: {{ .GroupLabels.alertname }}'
+
+  - name: 'signal-alerts'
+    email_configs:
+      - to: 'signal-monitoring@yourcompany.com'
+        subject: 'Signal Monitoring Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          Signal monitoring alert detected:
+          
+          Alert: {{ .GroupLabels.alertname }}
+          
+          {{ range .Alerts }}
+          Description: {{ .Annotations.description }}
+          Status: {{ .Status }}
+          Started: {{ .StartsAt }}
+          {{ end }}
+    
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#signal-monitoring'
+        title: 'Signal Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          📊 Signal monitoring alert
+          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+
+  - name: 'trading-alerts'
+    email_configs:
+      - to: 'trading-team@yourcompany.com'
+        subject: 'Trading System Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          Trading system alert:
+          
+          Alert: {{ .GroupLabels.alertname }}
+          
+          {{ range .Alerts }}
+          Description: {{ .Annotations.description }}
+          Status: {{ .Status }}
+          Started: {{ .StartsAt }}
+          {{ end }}
+    
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#trading-system'
+        title: 'Trading Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          🔄 Trading system alert
+          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+
+  - name: 'infrastructure-alerts'
+    email_configs:
+      - to: 'infrastructure@yourcompany.com'
+        subject: 'Infrastructure Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          Infrastructure alert:
+          
+          Alert: {{ .GroupLabels.alertname }}
+          
+          {{ range .Alerts }}
+          Description: {{ .Annotations.description }}
+          Status: {{ .Status }}
+          Started: {{ .StartsAt }}
+          {{ end }}
+    
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#infrastructure'
+        title: 'Infrastructure Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          🔧 Infrastructure alert
+          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+
+inhibit_rules:
+  # Inhibit duplicate alerts
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'service'] 

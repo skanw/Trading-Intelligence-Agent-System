@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eventpulse"
+version = "0.1.0"
+authors = [
+    { name = "Your Name" },
+]
+description = "Real-time financial news sentiment analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []  # requirements.txt handles this
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+namespaces = false 

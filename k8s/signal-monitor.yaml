@@ -1,0 +1,185 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: signal-monitor-cronjob
+  namespace: trading-system
+  labels:
+    app: signal-monitor
+    component: monitoring
+spec:
+  # Run every 2 minutes
+  schedule: "*/2 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: signal-monitor
+            component: monitoring
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: signal-monitor
+            image: trading-system/signal-monitor:latest
+            imagePullPolicy: Always
+            env:
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: trading-secrets
+                  key: redis-url
+            - name: PROMETHEUS_GATEWAY
+              value: "prometheus-pushgateway.monitoring.svc.cluster.local:9091"
+            - name: LOG_LEVEL
+              value: "INFO"
+            volumeMounts:
+            - name: checkpoint-storage
+              mountPath: /app/checkpoints
+            - name: logs
+              mountPath: /app/logs
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+            command:
+            - python
+            - monitor_signals_enhanced.py
+            - --prometheus-gateway
+            - prometheus-pushgateway.monitoring.svc.cluster.local:9091
+            - --checkpoint-file
+            - /app/checkpoints/signal_monitor.checkpoint
+          volumes:
+          - name: checkpoint-storage
+            persistentVolumeClaim:
+              claimName: signal-monitor-pvc
+          - name: logs
+            emptyDir: {}
+          nodeSelector:
+            workload: monitoring
+          tolerations:
+          - key: monitoring
+            operator: Equal
+            value: "true"
+            effect: NoSchedule
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: signal-monitor-pvc
+  namespace: trading-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: fast-ssd
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: signal-monitor-continuous
+  namespace: trading-system
+  labels:
+    app: signal-monitor
+    component: continuous-monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: signal-monitor
+      component: continuous-monitoring
+  template:
+    metadata:
+      labels:
+        app: signal-monitor
+        component: continuous-monitoring
+    spec:
+      containers:
+      - name: signal-monitor
+        image: trading-system/signal-monitor:latest
+        imagePullPolicy: Always
+        env:
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: trading-secrets
+              key: redis-url
+        - name: PROMETHEUS_GATEWAY
+          value: "prometheus-pushgateway.monitoring.svc.cluster.local:9091"
+        - name: LOG_LEVEL
+          value: "INFO"
+        volumeMounts:
+        - name: checkpoint-storage
+          mountPath: /app/checkpoints
+        - name: logs
+          mountPath: /app/logs
+        command:
+        - python
+        - monitor_signals_enhanced.py
+        - --continuous
+        - --prometheus-gateway
+        - prometheus-pushgateway.monitoring.svc.cluster.local:9091
+        - --checkpoint-file
+        - /app/checkpoints/signal_monitor_continuous.checkpoint
+        - --interval
+        - "30"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import redis; r=redis.Redis.from_url('redis://redis:6379/0'); r.ping()"
+          initialDelaySeconds: 30
+          periodSeconds: 60
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import redis; r=redis.Redis.from_url('redis://redis:6379/0'); r.ping()"
+          initialDelaySeconds: 10
+          periodSeconds: 30
+      volumes:
+      - name: checkpoint-storage
+        persistentVolumeClaim:
+          claimName: signal-monitor-pvc
+      - name: logs
+        emptyDir: {}
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+      - key: monitoring
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: signal-monitor-service
+  namespace: trading-system
+  labels:
+    app: signal-monitor
+spec:
+  selector:
+    app: signal-monitor
+    component: continuous-monitoring
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP 
